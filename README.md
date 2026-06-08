@@ -14,6 +14,8 @@ In one sentence: Caliper teaches the fast ML shortcuts that replace slow simulat
 - **Out-of-domain detection.** A trust score flags inputs that fall outside the region the model was validated on, so you do not trust answers you should not.
 - **Active learning.** Pick the most informative next simulation to run, so compute budget goes where it reduces error most.
 
+[Caliper catching a surrogate that is confidently wrong outside its training range](assets/cqr_demo_1d.png)
+
 ## Quick start
 
 ```bash
