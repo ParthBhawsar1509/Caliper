@@ -64,6 +64,33 @@ def solve_darcy(a, f=1.0):
     return u.reshape(N, N)
 
 
+# ---------- Caliper pieces (compact, same as the library core) ----------
+class CQRRegressor:
+    def __init__(self, alpha=0.1):
+        self.alpha = alpha
+    def fit(self, Xtr, ytr, Xc, yc):
+        mk = lambda q: GradientBoostingRegressor(loss="quantile", alpha=q, random_state=0)
+        self.lo_ = mk(self.alpha / 2).fit(Xtr, ytr)
+        self.hi_ = mk(1 - self.alpha / 2).fit(Xtr, ytr)
+        s = np.maximum(self.lo_.predict(Xc) - yc, yc - self.hi_.predict(Xc))
+        n = len(s); lvl = min(1.0, np.ceil((n + 1) * (1 - self.alpha)) / n)
+        self.Q_ = float(np.quantile(s, lvl, method="higher"))
+        return self
+    def predict(self, X):
+        return self.lo_.predict(X) - self.Q_, self.hi_.predict(X) + self.Q_
+
+
+class TrustScore:
+    def __init__(self, target=0.95):
+        self.target, self.cov_ = target, LedoitWolf()
+    def fit(self, Xtr, Xhold):
+        self.cov_.fit(Xtr)
+        self.threshold_ = float(np.quantile(self._s(Xhold), self.target))
+        return self
+    def _s(self, X):
+        return np.sqrt(self.cov_.mahalanobis(X))
+    def in_domain(self, X):
+        return self._s(X) <= self.threshold_
 
 
 def coverage(y, lo, hi):

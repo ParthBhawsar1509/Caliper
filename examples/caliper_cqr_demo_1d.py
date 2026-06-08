@@ -22,6 +22,49 @@ from sklearn.ensemble import GradientBoostingRegressor
 from sklearn.covariance import LedoitWolf
 
 
+# ----------------------------------------------------------------------
+# CQR: Conformalized Quantile Regression (Romano, Patterson, Candes 2019)
+# ----------------------------------------------------------------------
+class CQRRegressor:
+    def __init__(self, alpha=0.1, model_factory=None):
+        self.alpha = alpha
+        self.model_factory = model_factory or (
+            lambda q: GradientBoostingRegressor(loss="quantile", alpha=q, random_state=0)
+        )
+
+    def fit(self, X_tr, y_tr, X_cal, y_cal):
+        lo_q, hi_q = self.alpha / 2, 1 - self.alpha / 2
+        self.lo_ = self.model_factory(lo_q).fit(X_tr, y_tr)
+        self.hi_ = self.model_factory(hi_q).fit(X_tr, y_tr)
+        y_cal = np.asarray(y_cal)
+        lo_cal, hi_cal = self.lo_.predict(X_cal), self.hi_.predict(X_cal)
+        # conformity score: how far outside the quantile band each truth fell
+        scores = np.maximum(lo_cal - y_cal, y_cal - hi_cal)
+        n = len(scores)
+        level = min(1.0, np.ceil((n + 1) * (1 - self.alpha)) / n)
+        self.Q_ = float(np.quantile(scores, level, method="higher"))  # the conformal correction
+        return self
+
+    def predict(self, X):
+        return self.lo_.predict(X) - self.Q_, self.hi_.predict(X) + self.Q_
+
+
+class TrustScore:
+    def __init__(self, target_in_domain=0.95):
+        self.target, self.cov_ = target_in_domain, LedoitWolf()
+
+    def fit(self, X_train, X_holdout=None):
+        self.cov_.fit(np.asarray(X_train))
+        ref = np.asarray(X_holdout if X_holdout is not None else X_train)
+        self.threshold_ = float(np.quantile(self._score(ref), self.target))
+        return self
+
+    def _score(self, X):
+        return np.sqrt(self.cov_.mahalanobis(np.asarray(X)))
+
+    def in_domain(self, X):
+        return self._score(X) <= self.threshold_
+
 
 # ----------------------------------------------------------------------
 # Demo
